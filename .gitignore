@@ -1,0 +1,5 @@
+.DS_Store
+.snakemake
+input_data/**
+results/**
+workflow/scripts/__pycache__
