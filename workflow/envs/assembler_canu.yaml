@@ -1,0 +1,9 @@
+# Conda_ENV; assembler_canu; for nanopore data_type
+name: assembler_canu
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+# canu_dependent_packages
+  - canu=2.3

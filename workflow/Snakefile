@@ -1,28 +1,31 @@
 import pandas as pd
 import os
-from scripts.validate_assembler import validate_assembler
+from scripts.check_assemb import validate_assembler
 
-# Load Dataframe
-units_file = os.path.join('results', config["general"]["output_dir"], config["general"]["units"])
+# SECTION: DATAFRAME
+# Load dataframe containing sample metadata from specified file path
+units_file = os.path.join('results_metareads', config["general"]["output_dir"], config["general"]["units"])
 
+# Ensure the units file exists before proceeding
 if not os.path.exists(units_file):
     raise FileNotFoundError(f"The file {units_file} was not found. Please run the dataframe.py script first.")
 
-# Read Dataframe
+# Read the metadata table into a pandas dataframe
 units = pd.read_csv(units_file, sep="\t", dtype=str)
 data_type = config["settings"]['data_type']
 
-# Define selected columns based on data_type
+# Define which columns to extract based on the sequencing data type
+# fq1 = forward reads, fq2 = reverse reads, ONT = Oxford Nanopore reads
 data_type_columns = {
-    "Illumina": ["fq1", "fq2"],
-    "Hybrid": ["fq1", "fq2", "ONT"],
-    "Nanopore": ["ONT"]
+    "illumina": ["fq1", "fq2"],
+    "hybrid": ["fq1", "fq2", "ONT"],
+    "nanopore": ["ONT"]
 }
 selected_columns = data_type_columns.get(data_type)
 if selected_columns is None:
     raise ValueError(f"Invalid data_type '{data_type}' specified in config.yaml.")
 
-# Build the sample_files dictionary
+# Construct a dictionary of input files for each sample
 sample_files = {
     sample: {
         col: units.loc[units["sample"] == sample, col].iloc[0]
@@ -31,109 +34,372 @@ sample_files = {
     for sample in units["sample"].unique()
 }
 
-# Define active file types
+# Determine which file types are used based on the data type
 file_types = {
-    "Illumina": {"R1": True, "R2": True, "ONT": False},
-    "Nanopore": {"R1": False, "R2": False, "ONT": True},
-    "Hybrid": {"R1": True, "R2": True, "ONT": True}
+    "illumina": {"R1": True, "R2": True, "ONT": False},
+    "nanopore": {"R1": False, "R2": False, "ONT": True},
+    "hybrid": {"R1": True, "R2": True, "ONT": True}
 }.get(data_type, {})
 
+# Select file suffixes based on active file types
 selected_suffixes = [key for key, value in file_types.items() if value]
 
 
-# CONFIG VALIDATION
-# Validate;MultiQC
-if config.get('quality', {}).get('multiqc', False) and data_type == "Nanopore":
-    print("Error: MultiQC and FastQC is not supported for 'Nanopore'. Set 'multiqc' to false in the configfile.")
+# SECTION: CONFIG VALIDATION
+# Prevent use of MultiQC and FastQC for nanopore data
+if config.get('reads_quality', {}).get('multiqc', False) and data_type == "nanopore":
+    print("Error: MultiQC and FastQC is not supported for 'nanopore'. Set 'multiqc' to false in the configfile.")
     sys.exit(1)
 
-# Validate;NanoPlot
-if config.get('quality', {}).get('nanoplot', False) and data_type == "Illumina":
+# Prevent use of NanoPlot for Illumina data
+if config.get('reads_quality', {}).get('nanoplot', False) and data_type == "illumina":
     print("Error: NanoPlot is not supported for 'Illumina'. Set 'nanoplot' to false in the configfile.")
     sys.exit(1)
 
-# Validate;Assembler(scripts/validate_assembler.py)
+# Validate the assembler configuration as defined in the config file.
+# This function (from scripts/check_assemb.py) ensures that a supported assembler is selected and properly configured.
 validate_assembler(config)
 
 
-# FINAL OUTPUT FILES
+
+# Sets the main entry point for the Snakemake report
+report: "report/metareads.rst"
+
+# Rule 'all' defines the final targets Snakemake should produce
 rule all:
     input:
-        # UNZIP DATA
-        # Output;Unzip(.fastq)
-        expand("results/{project_name}/unpacked/{sample}/{sample}_{suffix}.fastq",
+# SECTION: GENERAL OUTPUTS (DAG_Plot, pigz)
+# Build DAG plot of the workflow using Snakemake
+        # Output file: dag_plot_TREE.pdf
+        os.path.join("results_metareads", config["general"]["output_dir"], "dag_plot_tree.pdf") 
+              if config["general"].get("dag_plot", False) else [],
+
+# temp()_____Unzip_Samples; with pigz;
+        # Output file: {sample}_{suffix}.fastq
+         #expand("results_metareads/{project_name}/unpacked/{sample}/{sample}_{suffix}.fastq",
+               #sample=sample_files.keys(),
+               #project_name=config["general"]["output_dir"],
+               #suffix=selected_suffixes),
+
+
+
+# SECTION: READS_QUALITY OUTPUTS (FastQC, MultiQC, NanoPlot)
+# Quality check of raw reads with FastQC
+        # Data type: illumina; Output file: {sample}_{suffix}_fastqc.html
+        expand("results_metareads/{project_name}/quality/{sample}/fastqc/{sample}_{suffix}_fastqc.html",
                sample=sample_files.keys(),
                project_name=config["general"]["output_dir"],
-               suffix=selected_suffixes),
+               suffix=["R1", "R2"]) if config["settings"]['data_type'] in ["illumina", "hybrid"] and config["reads_quality"]["multiqc"] else[],
 
-        # QUALITY CONTROL
-        # Output;FastQC(.html)
-        expand("results/{project_name}/quality/{sample}/{sample}_{suffix}_fastqc.html",
+# Summarize FastQC results with MultiQC
+        # Data type: illumina; Output file: multiqc_report.html
+        os.path.join("results_metareads",config["general"]["output_dir"],"quality/multiqc/multiqc_report.html") 
+              if config["settings"]['data_type'] in ["illumina", "hybrid"] and config["reads_quality"]["multiqc"] else [],
+
+# Visualize raw long-read quality with NanoPlot
+        # Data type: nanopore; Output file: {sample}_{suffix}_nanoplot.html
+        expand("results_metareads/{project_name}/quality/{sample}/nanoplot/{sample}_{suffix}_nanoplot.html",
                sample=sample_files.keys(),
                project_name=config["general"]["output_dir"],
-               suffix=["R1", "R2"]) if config["settings"]['data_type'] in ["Illumina", "Hybrid"] and config["quality"]["multiqc"] else[],
+               suffix=["ONT"]) if config["settings"]['data_type'] in ["nanopore", "hybrid"] and config["reads_quality"]["nanoplot"] else[],
 
-        # Output;MultiQC(.html)
-        os.path.join("results",config["general"]["output_dir"],"quality/multiqc/multiqc_report.html") if config["settings"]['data_type'] in ["Illumina", "Hybrid"] and config["quality"]["multiqc"] else [],
 
-        # Output;NanoPlot(.html)
-        expand("results/{project_name}/quality/{sample}/nanoplot/{sample}_{suffix}_nanoplot.html",
+
+# SECTION: READS_TRIM OUTPUTS (Cutadapt, Porechop)
+# temp()_____Adapter trimming for Illumina reads (_R1) with Cutadapt
+        # Data type: illumina; Output file: {sample}_R1_trim.fastq
+        #expand("results_metareads/{project_name}/filtered/cutadapt/{sample}/{sample}_R1_trim.fastq",
+               #sample=sample_files.keys(),
+               #project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["illumina", "hybrid"] else[],
+
+# temp()_____Adapter trimming for Illumina reads (_R2) with Cutadapt
+        # Data type: illumina; Output file: {sample}_R2_trim.fastq
+        #expand("results_metareads/{project_name}/filtered/cutadapt/{sample}/{sample}_R2_trim.fastq",
+               #sample=sample_files.keys(),
+               #project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["illumina", "hybrid"] else[],
+
+# temp()_____Adapter trimming for Nanopore reads with Porechop
+        # Data type: nanopore; Output file: {sample}_{suffix}_trim.fastq
+        #expand("results_metareads/{project_name}/filtered/porechop/{sample}/{sample}_{suffix}_trim.fastq",
+               #sample=sample_files.keys(),
+               #project_name=config["general"]["output_dir"],
+               #suffix=["ONT"]) if config["settings"]['data_type'] in ["nanopore", "hybrid"] else[],
+
+
+
+# SECTION: ASSEMBLER OUTPUTS (Flye, Canu, Spades, hSpades, MEGAHIT)
+# Assembler: Flye; Data type: nanopore and hybrid
+        # Output file: {sample}_{suffix}_assemb.fasta
+        expand("results_metareads/{project_name}/assembled/flye/{sample}/{sample}_{suffix}_assemb.fasta",
                sample=sample_files.keys(),
                project_name=config["general"]["output_dir"],
-               suffix=["ONT"]) if config["settings"]['data_type'] in ["Nanopore", "Hybrid"] and config["quality"]["nanoplot"] else[],
+               suffix=["ONT"]) if config["settings"]['data_type'] in ["nanopore", "hybrid"] and config["assembler"]["flye"]["status"] else[],
 
-        # POLISH DATA
-        # Output;Cutadapt(_R1_trimmed.fastq)
-        expand("results/{project_name}/filtered/cutadapt/{sample}/{sample}_R1_trimmed.fastq",
-               sample=sample_files.keys(),
-               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["Illumina", "Hybrid"] else[],
-
-        # Output;Cutadapt(_R2_trimmed.fastq)
-        expand("results/{project_name}/filtered/cutadapt/{sample}/{sample}_R2_trimmed.fastq",
-               sample=sample_files.keys(),
-               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["Illumina", "Hybrid"] else[],
-
-        # Output;Porechop(_trimmed.fastq)
-        expand("results/{project_name}/filtered/porechop/{sample}/{sample}_{suffix}_trimmed.fastq",
+# Assembler: Canu; Data type: nanopore
+        # Output file: {sample}_{suffix}_assemb.contigs.fasta
+        expand("results_metareads/{project_name}/assembled/canu/{sample}/{sample}_{suffix}_assemb.contigs.fasta",
                sample=sample_files.keys(),
                project_name=config["general"]["output_dir"],
-               suffix=["ONT"]) if config["settings"]['data_type'] in ["Nanopore", "Hybrid"] else[],
+               suffix=["ONT"]) if config["settings"]['data_type'] in ["nanopore"] and config["assembler"]["canu"]["status"] else[],
 
-        # ASSEMBLER
-        # Output;Flye;{sample}_{suffix}_asmb.fasta
-        expand("results/{project_name}/assembles/flye/{sample}/{sample}_{suffix}_asmb.fasta",
+# Assembler: Spades and hSpades; Data type: hybrid
+        # Output file: {sample}_assemb.fasta
+        expand("results_metareads/{project_name}/assembled/spades/{sample}/{sample}_assemb.fasta",
                sample=sample_files.keys(),
-               project_name=config["general"]["output_dir"],
-               suffix=["ONT"]) if config["settings"]['data_type'] in ["Nanopore", "Hybrid"] and config["assembler"]["flye"]["status"] else[],
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["illumina", "hybrid"] and config["assembler"]["spades"]["status"] else[],
 
-        # Output;Canu;{sample}_{suffix}.contigs.fasta
-        expand("results/{project_name}/assembles/canu/{sample}/{sample}_{suffix}.contigs.fasta",
+# Assembler: MEGAHIT; Data type: illumina
+        # Output file: {sample}_assemb.contigs.fa
+        expand("results_metareads/{project_name}/assembled/megahit/{sample}/{sample}_assemb.contigs.fa",
                sample=sample_files.keys(),
-               project_name=config["general"]["output_dir"],
-               suffix=["ONT"]) if config["settings"]['data_type'] in ["Nanopore", "Hybrid"] and config["assembler"]["canu"]["status"] else[],
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["illumina"] and config["assembler"]["megahit"]["status"] else[],
 
-        # Output;SPAdes;HybridSPAdes;{sample}_asmb.fasta
-        expand("results/{project_name}/assembles/spades/{sample}/{sample}_asmb.fasta",
+
+
+# SECTION: POLISH_PILON OUTPUTS (BWA, Pilon)
+# Pathway: Spades-BWA-Pilon; Data type: illumina
+       # Output file: {sample}_bwa_map_spades_I.bam
+        expand("results_metareads/{project_name}/filtered/bwa_map/{sample}/{sample}_bwa_map_spades_I.bam",
                sample=sample_files.keys(),
-               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["Illumina", "Hybrid"] and config["assembler"]["spades"]["status"] else[],
-               
-        # Output;MEGAHIT;{sample}_{suffix}_asmb.contigs.fa
-        expand("results/{project_name}/assembles/megahit/{sample}/{sample}_asmb.contigs.fa",
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["illumina"] and config["assembler"]['spades']["status"] else[],
+
+       # Output file: {sample}_pilon_spades_I_final_assemb.fasta; [FINAL_ASSEMBLY!]
+        expand("results_metareads/{project_name}/filtered/pilon/{sample}/{sample}_pilon_spades_I_final_assemb.fasta",
                sample=sample_files.keys(),
-               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["Illumina"] and config["assembler"]["megahit"]["status"] else[],
-
-       # BUILD DAG_PLOT;Output:dag_full_io.pdf
-        os.path.join("results", config["general"]["output_dir"], "dag_full_io.pdf") if config["general"].get("dag_plot", False) else [],
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["illumina"] and config["assembler"]['spades']["status"] else[],
 
 
-# IMPORT RULES FOR PIPELINE
-# Build DAG_PLOT
-include: "rules/dagplot.smk"
-# Unzip data;Tools:pigz
-include: "rules/unzip.smk"
-# Quality control;Tools:fastqc,multiqc,nanoplot
-include: "rules/prequality.smk"
-# Polish data;Tools:cutadapt,porechop
-include: "rules/prepolish.smk"
-# Assemlber:Flye;Canu;SPAdes;HybridSPAdes;MEGAHIT
-include: "rules/assemble.smk"
+# Pathway: MEGAHIT-BWA-Pilon; Data type: illumina
+       # Output file: {sample}_bwa_map_megahit_I.bam
+        expand("results_metareads/{project_name}/filtered/bwa_map/{sample}/{sample}_bwa_map_megahit_I.bam",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["illumina"] and config["assembler"]['megahit']["status"] else[],
+
+       # Output file: {sample}_pilon_megahit_I_final_assemb.fasta; [FINAL_ASSEMBLY!]
+        expand("results_metareads/{project_name}/filtered/pilon/{sample}/{sample}_pilon_megahit_I_final_assemb.fasta",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["illumina"] and config["assembler"]['megahit']["status"] else[],
+
+
+# Pathway: hSpades-BWA-Pilon; Data type: hybrid
+       # Output file: {sample}_bwa_map_hSpades_H.bam
+        expand("results_metareads/{project_name}/filtered/bwa_map/{sample}/{sample}_bwa_map_hSpades_H.bam",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["hybrid"] and config["assembler"]['spades']["status"] else[],
+
+       # Output file: {sample}_hSpades_H_final_assemb.fasta; [FINAL_ASSEMBLY!]
+        expand("results_metareads/{project_name}/filtered/pilon/{sample}/{sample}_hSpades_H_final_assemb.fasta",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["hybrid"] and config["assembler"]['spades']["status"] else[],
+
+
+# Pathway: Flye-Minimap2-Racon-MEDAKA-(BWA-Pilon); Data type: hybrid
+       # Output file: {sample}_bwa_map_flye_H.bam
+        expand("results_metareads/{project_name}/filtered/bwa_map/{sample}/{sample}_bwa_map_flye_H.bam",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["hybrid"] and config["assembler"]['flye']["status"] else[],
+
+       # Output file: {sample}_flye_H_final_assemb.fasta; [FINAL_ASSEMBLY!]
+        expand("results_metareads/{project_name}/filtered/pilon/{sample}/{sample}_flye_H_final_assemb.fasta",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["hybrid"] and config["assembler"]['flye']["status"] else[],
+
+
+
+# SECTION: POLISH_MEDAKA OUTPUTS (Medaka)
+# Pathway: Flye-Minimap2-Racon-MEDAKA; Data type: nanopore
+       # Output file: {sample}_flye_N_final_assemb.fasta; [FINAL_ASSEMBLY!]
+        expand("results_metareads/{project_name}/filtered/medaka/{sample}/{sample}_flye_N_final_assemb.fasta",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["nanopore"] and config["assembler"]['flye']["status"] else[],
+
+
+# Pathway: Canu-Minimap2-Racon-MEDAKA; Data type: nanopore
+       # Output file_medaka: {sample}_canu_N_final_assemb.fasta; [FINAL_ASSEMBLY!]
+        expand("results_metareads/{project_name}/filtered/medaka/{sample}/{sample}_canu_N_final_assemb.fasta",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["nanopore"] and config["assembler"]['canu']["status"] else[],
+
+
+# Pathway: Flye-Minimap2-Racon-MEDAKA; Data type: hybrid
+       # Output file: {sample}_flye_H_assemb.fasta
+        expand("results_metareads/{project_name}/filtered/medaka/{sample}/{sample}_flye_H_assemb.fasta",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["hybrid"] and config["assembler"]['flye']["status"] else[],
+
+
+
+# SECTION: ANALYSIS OUTPUTS (QUAST, BUSCO)
+# Quast; Data type: for all data types
+       # Output file: {sample}_quast_eval.html
+        expand("results_metareads/{project_name}/analysis/quast/{sample}_quast_eval.html",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["illumina", "nanopore", "hybrid"] else[],
+
+       # Output file: {sample}_quast_eval.tsv
+        expand("results_metareads/{project_name}/analysis/quast/{sample}_quast_eval.tsv",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["illumina", "nanopore", "hybrid"] else[],
+
+
+# SECTION_1_ILLUMINA_NANOPORE_HYBRID: BUSCO ANALYSIS
+# ILLUMINA OUTPUT
+       # Rule: busco_analysis_spades_I
+       # Output file: {sample}_busco_sum_spades_I.txt
+        expand("results_metareads/{project_name}/analysis/busco/spades/{sample}_busco_sum_spades_I.txt",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["illumina"] and config["assembler"]['spades']["status"] else[],
+
+       # Rule: busco_analysis_megahit_I
+       # Output file: {sample}_busco_sum_megahit_I.txt
+        expand("results_metareads/{project_name}/analysis/busco/megahit/{sample}_busco_sum_megahit_I.txt",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["illumina"] and config["assembler"]['megahit']["status"] else[],
+# NANOPORE OUTPUT
+       # Rule: busco_analysis_flye_N
+       # Output file: {sample}_busco_sum_flye_N.txt
+        expand("results_metareads/{project_name}/analysis/busco/flye/{sample}_busco_sum_flye_N.txt",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["nanopore"] and config["assembler"]['flye']["status"] else[],
+
+       # Rule: busco_analysis_canu_N
+       # Output file: {sample}_busco_sum_canu_N.txt
+        expand("results_metareads/{project_name}/analysis/busco/canu/{sample}_busco_sum_canu_N.txt",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["nanopore"] and config["assembler"]['canu']["status"] else[],
+# HYBRID OUTPUT
+       # Rule: busco_analysis_flye_H
+       # Output file: {sample}_busco_sum_flye_H.txt
+        expand("results_metareads/{project_name}/analysis/busco/flye/{sample}_busco_sum_flye_H.txt",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["hybrid"] and config["assembler"]['flye']["status"] else[],
+
+       # Rule: busco_analysis_hSpades_H
+       # Output file: {sample}_busco_sum_hSpades_H.txt
+        expand("results_metareads/{project_name}/analysis/busco/hSpades/{sample}_busco_sum_hSpades_H.txt",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["hybrid"] and config["assembler"]['spades']["status"] else[],
+
+
+# SECTION_2_ILLUMINA_NANOPORE: BUSCO WRITE CSV
+# ILLUMINA OUTPUT
+       # Rule: busco_csv_spades_I
+       # Output file: {sample}_busco_sum_spades_I.csv
+        expand("results_metareads/{project_name}/analysis/busco/spades/{sample}_busco_sum_spades_I.csv",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["illumina"] and config["assembler"]['spades']["status"] else[],
+
+       # Rule: busco_csv_megahit_I
+       # Output file: {sample}_busco_sum_megahit_I.csv
+        expand("results_metareads/{project_name}/analysis/busco/megahit/{sample}_busco_sum_megahit_I.csv",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["illumina"] and config["assembler"]['megahit']["status"] else[],
+# NANOPORE OUTPUT
+       # Rule: busco_csv_flye_N
+       # Output file: {sample}_busco_sum_flye_N.csv
+        expand("results_metareads/{project_name}/analysis/busco/flye/{sample}_busco_sum_flye_N.csv",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["nanopore"] and config["assembler"]['flye']["status"] else[],
+
+       # Rule: busco_csv_canu_N
+       # Output file: {sample}_busco_sum_canu_N.csv
+        expand("results_metareads/{project_name}/analysis/busco/canu/{sample}_busco_sum_canu_N.csv",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["nanopore"] and config["assembler"]['canu']["status"] else[],
+# HYBRID OUTPUT
+       # Rule: busco_csv_flye_H
+       # Output file: {sample}_busco_sum_flye_H.csv
+        expand("results_metareads/{project_name}/analysis/busco/flye/{sample}_busco_sum_flye_H.csv",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["hybrid"] and config["assembler"]['flye']["status"] else[],
+
+       # Rule: busco_csv_hSpades_H
+       # Output file: {sample}_busco_sum_hSpades_H.csv
+        expand("results_metareads/{project_name}/analysis/busco/hSpades/{sample}_busco_sum_hSpades_H.csv",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["hybrid"] and config["assembler"]['spades']["status"] else[],
+
+
+# SECTION_3_ILLUMINA_NANOPORE: BUSCO CREATE PLOT
+# ILLUMINA OUTPUT
+       # Rule: busco_plot_spades_I
+       # Output file: {sample}_busco_plot_spades_I.pdf
+        expand("results_metareads/{project_name}/analysis/busco/spades/{sample}_busco_plot_spades_I.pdf",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["illumina"] and config["assembler"]['spades']["status"] else[],
+
+       # Rule: busco_plot_megahit_I
+       # Output file: {sample}_busco_plot_megahit_I.pdf
+        expand("results_metareads/{project_name}/analysis/busco/megahit/{sample}_busco_plot_megahit_I.pdf",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["illumina"] and config["assembler"]['megahit']["status"] else[],
+# NANOPORE OUTPUT
+       # Rule: busco_plot_flye_N
+       # Output file: {sample}_busco_plot_flye_N.pdf
+        expand("results_metareads/{project_name}/analysis/busco/flye/{sample}_busco_plot_flye_N.pdf",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["nanopore"] and config["assembler"]['flye']["status"] else[],
+
+       # Rule: busco_plot_canu_N
+       # Output file: {sample}_busco_plot_canu_N.pdf
+        expand("results_metareads/{project_name}/analysis/busco/canu/{sample}_busco_plot_canu_N.pdf",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["nanopore"] and config["assembler"]['canu']["status"] else[],
+# HYBRID OUTPUT
+       # Rule: busco_plot_flye_H
+       # Output file: {sample}_busco_plot_flye_H.pdf
+        expand("results_metareads/{project_name}/analysis/busco/flye/{sample}_busco_plot_flye_H.pdf",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["hybrid"] and config["assembler"]['flye']["status"] else[],
+
+       # Rule: busco_plot_hSpades_H
+       # Output file: {sample}_busco_plot_hSpades_H.pdf
+        expand("results_metareads/{project_name}/analysis/busco/hSpades/{sample}_busco_plot_hSpades_H.pdf",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["hybrid"] and config["assembler"]['spades']["status"] else[],
+
+
+# SECTION_4_ILLUMINA_NANOPORE: BUSCO PLOT SUM
+# ILLUMINA OUTPUT
+       # Rule: busco_plot_sum_I
+       # Output file: {sample}_busco_plot_sum_I.pdf
+        expand("results_metareads/{project_name}/analysis/busco/sum/{sample}_busco_plot_sum_I.pdf",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["illumina"] else[],
+# NANOPORE OUTPUT
+       # Rule: busco_plot_sum_N
+       # Output file: {sample}_busco_plot_sum_N.pdf
+        expand("results_metareads/{project_name}/analysis/busco/sum/{sample}_busco_plot_sum_N.pdf",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["nanopore"] else[],
+# HYBRID OUTPUT
+       # Rule: busco_plot_sum_H
+       # Output file: {sample}_busco_plot_sum_H.pdf
+        expand("results_metareads/{project_name}/analysis/busco/sum/{sample}_busco_plot_sum_H.pdf",
+               sample=sample_files.keys(),
+               project_name=config["general"]["output_dir"]) if config["settings"]['data_type'] in ["hybrid"] else[],
+
+
+
+
+# INCLUDE MODULAR RULE FILES
+# Build DAG plot of the workflow using Snakemake
+include: "rules/dag_plot.smk"
+# Unzip_Samples; with pigz
+include: "rules/unzip_samples.smk"
+# Reads_quality; with FastQC, MultiQC, NanoPlot
+include: "rules/reads_quality.smk"
+# Reads_Trim; with Cutadapt, Porechop
+include: "rules/reads_trim.smk"
+# Assembler; with Flye, Canu, Spades, hSpades, MEGAHIT
+include: "rules/assembler.smk"
+# Polish_Pilon; with BWA, Samtools, Pilon
+include: "rules/pilon.smk"
+# Polish_Racon; with Minimap2, Racon
+include: "rules/racon.smk"
+# Polish_MEDAKA; with MEDAKA
+include: "rules/medaka.smk"
+# Analysis of assemblies; with QUAST
+include: "rules/quast.smk"
+# Analysis of assemblies; with BUSCO
+include: "rules/busco.smk"

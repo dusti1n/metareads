@@ -1,9 +1,12 @@
+# Conda_ENV; metareads
 name: metareads
 channels:
   - conda-forge
   - bioconda
   - defaults
 dependencies:
+# metareads_dependent_packages
   - snakemake=8.28.0
   - python=3.11
   - pigz=2.8
+  - numpy=2.3.1

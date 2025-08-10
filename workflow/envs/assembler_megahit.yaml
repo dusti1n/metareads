@@ -1,0 +1,9 @@
+# Conda_ENV; assembler_megahit; for illumina data_type
+name: assembler_megahit
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+# megahit_dependent_packages
+  - megahit=1.2.9

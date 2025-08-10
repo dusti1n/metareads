@@ -1,0 +1,9 @@
+# Conda_ENV; assembler_spades; for illumina and hybrid data_types
+name: assembler_spades
+channels:
+  - bioconda
+  - defaults
+  - conda-forge
+dependencies:
+# spades_dependent_packages
+  - spades=4.2.0

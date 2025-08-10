@@ -1,0 +1,11 @@
+# Conda_ENV; reads_trim; for all data types
+name: reads_trim
+channels:
+  - bioconda
+  - defaults
+  - conda-forge
+dependencies:
+# cutadapt_dependent_packages
+  - cutadapt=5.1
+# porechop_dependent_packages
+  - porechop=0.2.4

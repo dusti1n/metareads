@@ -1,0 +1,9 @@
+# Conda_ENV; medaka; for nanopore and hybrid data_types
+name: medaka
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+# medaka_dependent_packages
+  - medaka=2.1.0

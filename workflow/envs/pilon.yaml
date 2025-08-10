@@ -1,0 +1,11 @@
+# Conda_ENV; pilon; for illumina and hybrid data_types
+name: pilon
+channels:
+  - bioconda
+  - defaults
+  - conda-forge
+dependencies:
+# pilon_dependent_packages
+  - bwa=0.7.19
+  - samtools=1.22
+  - pilon=1.24

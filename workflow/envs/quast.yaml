@@ -1,0 +1,9 @@
+# Conda_ENV; quast; for all data types
+name: quast
+channels:
+  - bioconda
+  - defaults
+  - conda-forge
+dependencies:
+# quast_dependent_packages
+  - quast=5.3.0

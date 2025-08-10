@@ -1,0 +1,9 @@
+# Conda_ENV; assembler_flye; for nanopore and hybrid data_types
+name: assembler_flye
+channels:
+  - bioconda
+  - defaults
+  - conda-forge
+dependencies:
+# flye_dependent_packages
+  - flye=2.9.6

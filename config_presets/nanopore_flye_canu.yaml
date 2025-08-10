@@ -1,4 +1,4 @@
-# metareads; configuration file: illumina_spades_megahit.yaml
+# metareads; configuration file: nanopore_flye_canu.yaml
 
 # General settings for the pipeline
 general:
@@ -6,19 +6,19 @@ general:
   output_dir: project_name # Project name of output directory for results
   units: units.tsv # Units file with sample metadata and file paths
   dag_plot: true  # Set to true to generate a DAG visualization of the workflow (default: true)
-  dag_config: config_presets/illumina_spades_megahit.yaml  # Path to config for DAG generation
+  dag_config: config_presets/nanopore_flye_canu.yaml  # Path to config for DAG generation
 
 # Settings for data type and resource management
 settings:
-  data_type: illumina # Data type: illumina, nanopore, or hybrid
+  data_type: nanopore # Data type: illumina, nanopore, or hybrid
   threads: 10 # Number of CPU cores for processing
   memory: 30000 # RAM in MB (1GB=1000MB)
   busco_lineage: "eukaryota_odb10" # Lineage for BUSCO analysis; see list: https://busco.ezlab.org/list_of_lineages.html
 
 # READS_QUALITY; Quality settings for Illumina, Nanopore, and hybrid data types
 reads_quality:
-  multiqc: true # Enable or disable FastQC and MultiQC (Illumina, Hybrid)
-  nanoplot: false # Enable or disable NanoPlot (Nanopore, Hybrid)
+  multiqc: false # Enable or disable FastQC and MultiQC (Illumina, Hybrid)
+  nanoplot: true # Enable or disable NanoPlot (Nanopore, Hybrid)
 
 # READS_TRIM; Preprocessing settings before assembly (adapter trimming, quality filtering)
 reads_trim:
@@ -47,14 +47,14 @@ reads_trim:
 assembler:
 # Flye; for [nanopore] and [hybrid] data types
   flye:
-    status: false # Enable or disable FLYE
+    status: true # Enable or disable FLYE
     genome_size: "12m" # Set genome size
     iterations: 2 # Polishing rounds (Higher accuracy: 5, Default: 2)
     meta: true # Activate metagenome mode in Flye (default: true)
 
 # Canu; for [nanopore] data type
   canu:
-    status: false # Enable or disable CANU
+    status: true # Enable or disable CANU
     genome_size: "5m" # Set genome size
     stop_on_low_coverage: "" # Canu defaults to 10 if not set
     min_input_coverage: "" # Canu defaults to 0 if not set
@@ -62,13 +62,13 @@ assembler:
 # Spades; for [illumina] data type
 # Hybrid_Spades; for [hybrid] data type
   spades:
-    status: true # Enable or disable Spades or Hybrid_Spades
+    status: false # Enable or disable Spades or Hybrid_Spades
     meta: true # Use metagenome mode in Spades (Illumina-only; not compatible with Hybrid_Spades) (default: true)
 
 # MEGAHIT; for [illumina] data type
 # NOTE: Available preset options: default, manual, meta-sensitive, meta-large, large, fast
   megahit:
-    status: true # Enable or disable MEGAHIT
+    status: false # Enable or disable MEGAHIT
     preset: "meta-sensitive" # Set to a preset name (e.g., meta-sensitive), or "manual" to use custom k-mer values below
     min_contig_len: 200 # Minimum length of contigs to output, default 200
     min_count: 2 # Minimum multiplicity for filtering (k_min+1)-mers, default 2

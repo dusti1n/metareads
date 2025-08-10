@@ -1,5 +1,13 @@
+# macOS Finder metadata
 .DS_Store
+# Snakemake working directory (logs, temp files)
 .snakemake
-input_data/**
-results/**
+# Ignore all contents of input_data, but keep the folder itself
+input_data/*
+!input_data/.gitkeep
+# Ignore all generated analysis results
+results_metareads/**
+# Local sandbox config (not for production)
+config_presets/metareads_sandbox_config.yaml
+# Python cache files
 workflow/scripts/__pycache__

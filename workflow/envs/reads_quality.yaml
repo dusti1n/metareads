@@ -1,0 +1,12 @@
+# Conda_ENV; reads_quality; for all data types
+name: reads_quality
+channels:
+  - bioconda
+  - defaults
+  - conda-forge
+dependencies:
+# nanoplot_dependent_packages
+  - nanoplot=1.44.1
+# fastqc_multiqc_dependent_packages
+  - fastqc=0.12.1
+  - multiqc=1.29

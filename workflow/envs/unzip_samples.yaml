@@ -1,0 +1,9 @@
+# Conda_ENV; unzip_samples; for all data types
+name: unzip_samples
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+# pigz_dependent_packages
+  - pigz=2.8
