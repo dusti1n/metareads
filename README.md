@@ -16,7 +16,7 @@ If you use **metareads** in your research, please cite it as follows:
 4. [Install Environment](#install-environment)  
 6. [Configuration Setup](#configuration-setup)  
 7. [Run metareads](#run-metareads)  
-8. [Analysis Report](#create-analysis-report)  
+8. [Analysis Report](#analysis-report)  
 9. [References](#references)
 
 ---
@@ -56,7 +56,7 @@ Overview of the main modules and processing stages included in the **metareads**
 
 This section provides a step-by-step guide to installing, configuring, and running **metareads**. Follow the instructions to set up the environment, prepare the configuration, and execute the workflow on your dataset.
 
-### 1. Install Conda
+### Install Conda
 
 #### Install **Miniconda3** on Linux with:
 
@@ -71,7 +71,7 @@ chmod +x Miniconda3-latest-Linux-x86_64.sh
 bash Miniconda3-latest-Linux-x86_64.sh
 ```
 
-### 2. Install Environment
+### Install Environment
 
 **1. Create a working directory for your project**
 
@@ -104,7 +104,7 @@ conda env create -f metareads.yaml
 conda activate metareads
 ```
 
-### 3. Configuration Setup
+### Configuration Setup
 
 Before running **metareads**, set up your configuration file.  
 Example configs are provided in `config_presets/` as starting points.
@@ -134,7 +134,7 @@ Adjust assembler parameters if needed.
 
 
 
-### 4. Run metareads
+### Run metareads
 
 Once your **conda environment** is activated and your **configuration file** is set up, you can start the analysis.
 
